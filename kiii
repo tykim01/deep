@@ -1,0 +1,44 @@
+### 데이터 수집을 위한 초기 설정
+robot = env.unwrapped.scene["robot"]
+foot_indices, _ = robot.find_bodies(".*_foot") # 인덱스 찾기
+
+time_series_data = [] # 데이터를 수집할 리스트
+prev_lin_vel = robot.data.root_lin_vel_b.clone() # 초기 선형 속도
+
+target_save_dir = "./data/20260404_proprioception" # 데이터 저장 경로
+os.makedirs(target_save_dir, exist_ok=True)
+###
+
+...
+# simulate environment
+while simulation_app.is_running():
+		...    
+    ### 18개 채널의 데이터 수집
+    if timestep % 10 == 0:
+        curr_lin_vel = robot.data.root_lin_vel_b.clone() # 몸체 선형 속도
+        
+        # 몸체 선형 가속도 계산 (3축)
+        lin_acc = (curr_lin_vel - prev_lin_vel) / dt 
+        prev_lin_vel = curr_lin_vel
+        
+        # 몸체 각속도 추출 (3축)
+        ang_vel = robot.data.root_ang_vel_b.clone()
+        
+        # 4개 발끝 선형 속도 추출 (4개 * 3축 = 12축)
+        foot_vels = robot.data.body_lin_vel_w[:, foot_indices, :].clone() 
+        foot_vels_flat = foot_vels.view(foot_vels.shape[0], -1)
+        
+        # 데이터 병합
+        step_data = torch.cat([lin_acc, ang_vel, foot_vels_flat], dim=-1)
+        time_series_data.append(step_data.cpu().numpy())
+
+        # 100개의 데이터가 수집되면, 파일 저장
+        if len(time_series_data) == 100:
+            time_series_data_np = np.stack(time_series_data, axis=1) 
+            
+            save_filename = f"rough.npy"
+            save_path = os.path.join(target_save_dir, save_filename)
+            
+            np.save(save_path, time_series_data_np)
+            print(f"[INFO] Collect 100 step (Saved: {save_filename} | Shape: {time_series_data_np.shape})")
+        ###
